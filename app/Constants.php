@@ -158,6 +158,7 @@ if (! defined('APP_NAME')) {
     define('MAX_DOCUMENT_SIZE', env('MAX_DOCUMENT_SIZE', 10000)); // KB
     define('MAX_EMAIL_DOCUMENTS_SIZE', env('MAX_EMAIL_DOCUMENTS_SIZE', 10000)); // Total KB
     define('MAX_ZIP_DOCUMENTS_SIZE', env('MAX_EMAIL_DOCUMENTS_SIZE', 30000)); // Total KB (uncompressed)
+    define('MAX_EMAILS_SENT_PER_DAY', 200);
     define('DOCUMENT_PREVIEW_SIZE', env('DOCUMENT_PREVIEW_SIZE', 300)); // pixels
     define('DEFAULT_FONT_SIZE', 9);
     define('DEFAULT_HEADER_FONT', 1); // Roboto
@@ -295,10 +296,12 @@ if (! defined('APP_NAME')) {
     define('GATEWAY_DWOLLA', 43);
     define('GATEWAY_CHECKOUT_COM', 47);
     define('GATEWAY_CYBERSOURCE', 49);
+    define('GATEWAY_PAYTRACE', 56);
     define('GATEWAY_WEPAY', 60);
     define('GATEWAY_BRAINTREE', 61);
     define('GATEWAY_CUSTOM', 62);
     define('GATEWAY_GOCARDLESS', 64);
+    define('GATEWAY_PAYMILL', 66);
 
     // The customer exists, but only as a local concept
     // The remote gateway doesn't understand the concept of customers
@@ -336,7 +339,8 @@ if (! defined('APP_NAME')) {
     define('NINJA_APP_URL', env('NINJA_APP_URL', 'https://app.invoiceninja.com'));
     define('NINJA_DOCS_URL', env('NINJA_DOCS_URL', 'http://docs.invoiceninja.com/en/latest'));
     define('NINJA_DATE', '2000-01-01');
-    define('NINJA_VERSION', '4.1.5' . env('NINJA_VERSION_SUFFIX'));
+    define('NINJA_VERSION', '4.3.0' . env('NINJA_VERSION_SUFFIX'));
+    define('NINJA_TERMS_VERSION', '');
 
     define('SOCIAL_LINK_FACEBOOK', env('SOCIAL_LINK_FACEBOOK', 'https://www.facebook.com/invoiceninja'));
     define('SOCIAL_LINK_TWITTER', env('SOCIAL_LINK_TWITTER', 'https://twitter.com/invoiceninja'));
@@ -457,6 +461,7 @@ if (! defined('APP_NAME')) {
 
     define('TEMPLATE_INVOICE', 'invoice');
     define('TEMPLATE_QUOTE', 'quote');
+    define('TEMPLATE_PROPOSAL', 'proposal');
     define('TEMPLATE_PARTIAL', 'partial');
     define('TEMPLATE_PAYMENT', 'payment');
     define('TEMPLATE_REMINDER1', 'reminder1');

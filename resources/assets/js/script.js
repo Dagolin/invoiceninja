@@ -589,13 +589,13 @@ function calculateAmounts(invoice) {
     if (invoice.is_statement) {
         var lineTotal = roundToTwo(NINJA.parseFloat(item.balance));
     } else {
-        var lineTotal = roundSignificant(NINJA.parseFloat(item.cost)) * roundSignificant(NINJA.parseFloat(item.qty));
+        var lineTotal = roundSignificant(NINJA.parseFloat(item.cost) * NINJA.parseFloat(item.qty));
         var discount = roundToTwo(NINJA.parseFloat(item.discount));
         if (discount != 0) {
             if (parseInt(invoice.is_amount_discount)) {
                 lineTotal -= discount;
             } else {
-                lineTotal -= (lineTotal * discount / 100);
+                lineTotal -= roundToTwo(lineTotal * discount / 100);
             }
         }
     }
@@ -645,24 +645,24 @@ function calculateAmounts(invoice) {
     }
 
     // calculate line item tax
-    var lineTotal = roundSignificant(NINJA.parseFloat(item.cost)) * roundSignificant(NINJA.parseFloat(item.qty));
+    var lineTotal = roundSignificant(NINJA.parseFloat(item.cost) * NINJA.parseFloat(item.qty));
     var discount = roundToTwo(NINJA.parseFloat(item.discount));
     if (discount != 0) {
         hasDiscount = true;
         if (parseInt(invoice.is_amount_discount)) {
             lineTotal -= discount;
         } else {
-            lineTotal -= (lineTotal * discount / 100);
+            lineTotal -= roundSignificant(lineTotal * discount / 100);
         }
     }
-    lineTotal = roundToTwo(lineTotal);
+    lineTotal = roundSignificant(lineTotal);
 
     if (invoice.discount != 0) {
         var discount = roundToTwo(NINJA.parseFloat(invoice.discount));
         if (parseInt(invoice.is_amount_discount)) {
-            lineTotal -= roundToTwo((lineTotal/total) * discount);
+            lineTotal -= roundSignificant((lineTotal/total) * discount);
         } else {
-            lineTotal -= roundToTwo(lineTotal * discount / 100);
+            lineTotal -= roundSignificant(lineTotal * discount / 100);
         }
     }
 

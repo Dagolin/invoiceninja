@@ -32,10 +32,11 @@ class ProductReport extends AbstractReport
         }
 
         if ($account->custom_invoice_item_label1) {
-            $columns[$account->custom_invoice_item_label1] = ['columnSelector-false', 'custom'];
+            $columns[$account->present()->customProductLabel1] = ['columnSelector-false', 'custom'];
         }
-        if ($account->custom_invoice_item_labe2) {
-            $columns[$account->custom_invoice_item_labe2] = ['columnSelector-false', 'custom'];
+
+        if ($account->custom_invoice_item_label2) {
+            $columns[$account->present()->customProductLabel2] = ['columnSelector-false', 'custom'];
         }
 
         return $columns;
@@ -45,11 +46,12 @@ class ProductReport extends AbstractReport
     {
         $account = Auth::user()->account;
         $statusIds = $this->options['status_ids'];
+        $subgroup = $this->options['subgroup'];
 
         $clients = Client::scope()
                         ->orderBy('name')
                         ->withArchived()
-                        ->with('contacts')
+                        ->with('contacts', 'user')
                         ->with(['invoices' => function ($query) use ($statusIds) {
                             $query->invoices()
                                   ->withArchived()
@@ -67,7 +69,7 @@ class ProductReport extends AbstractReport
                         $this->isExport ? $invoice->invoice_number : $invoice->present()->link,
                         $invoice->present()->invoice_date,
                         $item->product_key,
-                        $this->isExport ? $item->notes : $item->present()->notes,
+                        $item->notes,
                         Utils::roundSignificant($item->qty, 0),
                         Utils::roundSignificant($item->cost, 2),
                     ];
@@ -82,12 +84,20 @@ class ProductReport extends AbstractReport
                     if ($account->custom_invoice_item_label1) {
                         $row[] = $item->custom_value1;
                     }
-                    if ($account->custom_invoice_item_labe2) {
+
+                    if ($account->custom_invoice_item_label2) {
                         $row[] = $item->custom_value2;
                     }
 
                     $this->data[] = $row;
 
+                    if ($subgroup == 'product') {
+                        $dimension = $item->product_key;
+                    } else {
+                        $dimension = $this->getDimension($client);
+                    }
+
+                    $this->addChartData($dimension, $invoice->invoice_date, $invoice->amount);
                 }
 
                 //$this->addToTotals($client->currency_id, 'paid', $payment ? $payment->getCompletedAmount() : 0);

@@ -28,10 +28,10 @@ class QuoteReport extends AbstractReport
         $account = auth()->user()->account;
 
         if ($account->custom_invoice_text_label1) {
-            $columns[$account->custom_invoice_text_label1] = ['columnSelector-false', 'custom'];
+            $columns[$account->present()->customInvoiceTextLabel1] = ['columnSelector-false', 'custom'];
         }
         if ($account->custom_invoice_text_label1) {
-            $columns[$account->custom_invoice_text_label1] = ['columnSelector-false', 'custom'];
+            $columns[$account->present()->customInvoiceTextLabel2] = ['columnSelector-false', 'custom'];
         }
 
         return $columns;
@@ -43,6 +43,7 @@ class QuoteReport extends AbstractReport
         $statusIds = $this->options['status_ids'];
         $exportFormat = $this->options['export_format'];
         $hasTaxRates = TaxRate::scope()->count();
+        $subgroup = $this->options['subgroup'];
 
         $clients = Client::scope()
                         ->orderBy('name')
@@ -58,6 +59,10 @@ class QuoteReport extends AbstractReport
                         }]);
 
         if ($this->isExport && $exportFormat == 'zip') {
+            if (! extension_loaded('GMP')) {
+                die(trans('texts.gmp_required'));
+            }
+
             $zip = Archive::instance_by_useragent(date('Y-m-d') . '_' . str_replace(' ', '_', trans('texts.quote_documents')));
             foreach ($clients->get() as $client) {
                 foreach ($client->invoices as $invoice) {
@@ -98,6 +103,14 @@ class QuoteReport extends AbstractReport
                 $this->data[] = $row;
 
                 $this->addToTotals($client->currency_id, 'amount', $invoice->amount);
+
+                if ($subgroup == 'status') {
+                    $dimension = $invoice->statusLabel();
+                } else {
+                    $dimension = $this->getDimension($client);
+                }
+
+                $this->addChartData($dimension, $invoice->invoice_date, $invoice->amount);
             }
         }
     }

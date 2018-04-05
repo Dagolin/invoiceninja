@@ -52,8 +52,8 @@
             invoice_settings:{{ Auth::user()->hasFeature(FEATURE_INVOICE_SETTINGS) ? 'true' : 'false' }}
         };
       invoice.account.hide_paid_to_date = {!! Auth::user()->account->hide_paid_to_date ? 'true' : 'false' !!};
-      NINJA.primaryColor = '{!! Auth::user()->account->primary_color !!}';
-      NINJA.secondaryColor = '{!! Auth::user()->account->secondary_color !!}';
+      NINJA.primaryColor = {!! json_encode(Auth::user()->account->primary_color) !!};
+      NINJA.secondaryColor = {!! json_encode(Auth::user()->account->secondary_color) !!};
       NINJA.fontSize = {!! Auth::user()->account->font_size !!};
       NINJA.headerFont = {!! json_encode(Auth::user()->account->getHeaderFontName()) !!};
       NINJA.bodyFont = {!! json_encode(Auth::user()->account->getBodyFontName()) !!};
@@ -162,11 +162,6 @@
         });
 
         refreshPDF(true);
-
-        @if (isset($sampleInvoice) && $sampleInvoice)
-            var sample = {!! $sampleInvoice->toJSON() !!}
-            $('#sampleData').show().html(prettyJson(sample));
-        @endif
     });
 
   </script>
@@ -233,30 +228,13 @@
 		  <div class="container" style="width: 100%; padding-bottom: 0px !important">
 		  <div class="panel panel-default">
 		  <div class="panel-body">
-	            {!! trans('texts.customize_help') !!}<br/>
-	            <pre id="sampleData" style="display:none;height:200px;padding-top:16px;"></pre>
-	            @if (empty($sampleInvoice))
-	                <div class="help-block">{{ trans('texts.create_invoice_for_sample') }}</div>
-	            @endif
+	            {!! trans('texts.customize_help', [
+						'pdfmake_link' => link_to('http://pdfmake.org', 'pdfmake', ['target' => '_blank']),
+						'playground_link' => link_to('http://pdfmake.org/playground.html', trans('texts.playground'), ['target' => '_blank']),
+						'forum_link' => link_to('https://www.invoiceninja.com/forums/forum/support', trans('texts.support_forum'), ['target' => '_blank']),
+					]) !!}<br/>
 
-				@if ($account->require_invoice_signature || $account->require_invoice_signature)
-					<p>&nbsp;</p>
-					{{ trans('texts.signature_on_invoice_help') }}
-					<pre style="padding-top:16px;">
-{
-	"stack": [
-	{
-		"image": "$signatureBase64",
-		"margin": [200, 10, 0, 0]
-	},
-	{
-		"text": ["{{ trans('texts.signed') }}: ", "$signatureDate"],
-		"margin": [200, -40, 0, 0]
-	}
-	]
-},
-					</pre>
-				@endif
+				@include('partials/variables_help', ['entityType' => ENTITY_INVOICE, 'account' => $account])
           </div>
 	  	  </div>
   		  </div>

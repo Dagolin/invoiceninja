@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\InvoiceInvitationWasViewed;
 use App\Events\QuoteInvitationWasViewed;
+use App\Models\Account;
 use App\Models\Contact;
 use App\Models\Document;
 use App\Models\Gateway;
@@ -15,7 +16,6 @@ use App\Ninja\Repositories\DocumentRepository;
 use App\Ninja\Repositories\InvoiceRepository;
 use App\Ninja\Repositories\PaymentRepository;
 use App\Ninja\Repositories\TaskRepository;
-use App\Ninja\Repositories\ProposalRepository;
 use App\Services\PaymentService;
 use Auth;
 use Barracuda\ArchiveStream\ZipArchive;
@@ -37,7 +37,6 @@ class ClientPortalController extends BaseController
     private $invoiceRepo;
     private $paymentRepo;
     private $documentRepo;
-    private $propoosalRepo;
 
     public function __construct(
         InvoiceRepository $invoiceRepo,
@@ -46,8 +45,7 @@ class ClientPortalController extends BaseController
         DocumentRepository $documentRepo,
         PaymentService $paymentService,
         CreditRepository $creditRepo,
-        TaskRepository $taskRepo,
-        ProposalRepository $propoosalRepo)
+        TaskRepository $taskRepo)
     {
         $this->invoiceRepo = $invoiceRepo;
         $this->paymentRepo = $paymentRepo;
@@ -56,29 +54,6 @@ class ClientPortalController extends BaseController
         $this->paymentService = $paymentService;
         $this->creditRepo = $creditRepo;
         $this->taskRepo = $taskRepo;
-        $this->propoosalRepo = $propoosalRepo;
-    }
-
-    public function viewProposal($invitationKey)
-    {
-        if (! $invitation = $this->propoosalRepo->findInvitationByKey($invitationKey)) {
-            return $this->returnError(trans('texts.proposal_not_found'));
-        }
-
-        $account = $invitation->account;
-        $proposal = $invitation->proposal;
-        $invitation = Invitation::whereContactId($invitation->contact_id)
-                ->whereInvoiceId($proposal->invoice_id)
-                ->firstOrFail();
-
-        $data = [
-            'proposalInvitation' => $invitation,
-            'proposal' => $proposal,
-            'account' => $account,
-            'invitation' => $invitation,
-        ];
-
-        return view('invited.proposal', $data);
     }
 
     public function viewInvoice($invitationKey)
@@ -101,8 +76,6 @@ class ClientPortalController extends BaseController
                 'error' => trans('texts.invoice_not_found'),
             ]);
         }
-
-        $account->loadLocalizationSettings($client);
 
         if (! Input::has('phantomjs') && ! session('silent:' . $client->id) && ! Session::has($invitation->invitation_key)
             && (! Auth::check() || Auth::user()->account_id != $invoice->account_id)) {
@@ -140,6 +113,7 @@ class ClientPortalController extends BaseController
             'custom_value1',
             'custom_value2',
         ]);
+        $account->load(['date_format', 'datetime_format']);
 
         // translate the country names
         if ($invoice->client->country) {
@@ -252,7 +226,7 @@ class ClientPortalController extends BaseController
         return $pdfString;
     }
 
-    public function sign($invitationKey)
+    public function authorizeInvoice($invitationKey)
     {
         if (! $invitation = $this->invoiceRepo->findInvoiceByInvitation($invitationKey)) {
             return RESULT_FAILURE;
@@ -288,7 +262,6 @@ class ClientPortalController extends BaseController
             return redirect(request()->url());
         }
 
-        $account->loadLocalizationSettings($client);
         $color = $account->primary_color ? $account->primary_color : '#0b4d78';
         $customer = false;
 
@@ -361,7 +334,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $account->enable_client_portal) {
             return $this->returnError();
@@ -395,7 +367,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $account->enable_client_portal) {
             return $this->returnError();
@@ -441,7 +412,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $account->enable_client_portal) {
             return $this->returnError();
@@ -526,7 +496,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $account->enable_client_portal) {
             return $this->returnError();
@@ -562,7 +531,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $account->enable_client_portal) {
             return $this->returnError();
@@ -598,7 +566,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $contact->client->show_tasks_in_portal) {
             return redirect()->to($account->enable_client_portal_dashboard ? '/client/dashboard' : '/client/payment_methods/');
@@ -638,7 +605,6 @@ class ClientPortalController extends BaseController
         }
 
         $account = $contact->account;
-        $account->loadLocalizationSettings($contact->client);
 
         if (! $account->enable_client_portal) {
             return $this->returnError();
@@ -1022,7 +988,7 @@ class ClientPortalController extends BaseController
             'email' => 'required',
             'address1' => 'required',
             'city' => 'required',
-            'state' => 'required',
+            'state' => $account->requiresAddressState() ? 'required' : '',
             'postal_code' => 'required',
             'country_id' => 'required',
         ];
@@ -1033,7 +999,7 @@ class ClientPortalController extends BaseController
             $rules['first_name'] = 'required';
             $rules['last_name'] = 'required';
         }
-        if ($account->vat_number) {
+        if ($account->vat_number || $account->isNinjaAccount()) {
             $rules['vat_number'] = 'required';
         }
 

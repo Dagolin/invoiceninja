@@ -32,6 +32,10 @@ class AccountRepository
     public function create($firstName = '', $lastName = '', $email = '', $password = '', $company = false)
     {
         if (! $company) {
+            if (Utils::isNinja()) {
+                $this->checkForSpammer();
+            }
+
             $company = new Company();
             $company->utm_source = Input::get('utm_source');
             $company->utm_medium = Input::get('utm_medium');
@@ -63,32 +67,36 @@ class AccountRepository
         $account->currency_id = DEFAULT_CURRENCY;
 
         // Set default language/currency based on IP
+        // TODO Disabled until GDPR implications are understood
+        /*
         if (\Cache::get('currencies')) {
-            $data = unserialize(file_get_contents('http://www.geoplugin.net/php.gp?ip=' . $account->ip));
-            $currencyCode = strtolower($data['geoplugin_currencyCode']);
-            $countryCode = strtolower($data['geoplugin_countryCode']);
+            if ($data = unserialize(@file_get_contents('http://www.geoplugin.net/php.gp?ip=' . $account->ip))) {
+                $currencyCode = strtolower($data['geoplugin_currencyCode']);
+                $countryCode = strtolower($data['geoplugin_countryCode']);
 
-            $currency = \Cache::get('currencies')->filter(function ($item) use ($currencyCode) {
-                return strtolower($item->code) == $currencyCode;
-            })->first();
-            if ($currency) {
-                $account->currency_id = $currency->id;
-            }
+                $currency = \Cache::get('currencies')->filter(function ($item) use ($currencyCode) {
+                    return strtolower($item->code) == $currencyCode;
+                })->first();
+                if ($currency) {
+                    $account->currency_id = $currency->id;
+                }
 
-            $country = \Cache::get('countries')->filter(function ($item) use ($countryCode) {
-                return strtolower($item->iso_3166_2) == $countryCode || strtolower($item->iso_3166_3) == $countryCode;
-            })->first();
-            if ($country) {
-                $account->country_id = $country->id;
-            }
+                $country = \Cache::get('countries')->filter(function ($item) use ($countryCode) {
+                    return strtolower($item->iso_3166_2) == $countryCode || strtolower($item->iso_3166_3) == $countryCode;
+                })->first();
+                if ($country) {
+                    $account->country_id = $country->id;
+                }
 
-            $language = \Cache::get('languages')->filter(function ($item) use ($countryCode) {
-                return strtolower($item->locale) == $countryCode;
-            })->first();
-            if ($language) {
-                $account->language_id = $language->id;
+                $language = \Cache::get('languages')->filter(function ($item) use ($countryCode) {
+                    return strtolower($item->locale) == $countryCode;
+                })->first();
+                if ($language) {
+                    $account->language_id = $language->id;
+                }
             }
         }
+        */
 
         $account->save();
 
@@ -119,6 +127,25 @@ class AccountRepository
         $account->account_email_settings()->save($emailSettings);
 
         return $account;
+    }
+
+    private function checkForSpammer()
+    {
+        $ip = Request::getClientIp();
+        $count = Account::whereIp($ip)->whereHas('users', function ($query) {
+            $query->whereRegistered(true);
+        })->count();
+
+        if ($count > 10 && $errorEmail = env('ERROR_EMAIL')) {
+            \Mail::raw($ip, function ($message) use ($ip, $errorEmail) {
+                $message->to($errorEmail)
+                        ->from(CONTACT_EMAIL)
+                        ->subject('Duplicate company for IP: ' . $ip);
+            });
+            if ($count >= 15) {
+                abort();
+            }
+        }
     }
 
     public function getSearchData($user)
@@ -152,16 +179,16 @@ class AccountRepository
         if ($user->hasPermission('view_all')) {
             $clients = Client::scope()
                         ->with('contacts', 'invoices')
-                        ->withArchived()
+                        ->withTrashed()
                         ->with(['contacts', 'invoices' => function ($query) use ($user) {
-                            $query->withArchived();
+                            $query->withTrashed();
                         }])->get();
         } else {
             $clients = Client::scope()
                         ->where('user_id', '=', $user->id)
-                        ->withArchived()
+                        ->withTrashed()
                         ->with(['contacts', 'invoices' => function ($query) use ($user) {
-                            $query->withArchived()
+                            $query->withTrashed()
                                   ->where('user_id', '=', $user->id);
                         }])->get();
         }
@@ -169,7 +196,7 @@ class AccountRepository
         foreach ($clients as $client) {
             if ($client->name) {
                 $data['clients'][] = [
-                    'value' => ($account->clientNumbersEnabled() && $client->id_number ? $client->id_number . ': ' : '') . $client->name,
+                    'value' => ($client->id_number ? $client->id_number . ': ' : '') . $client->name,
                     'tokens' => implode(',', [$client->name, $client->id_number, $client->vat_number, $client->work_phone]),
                     'url' => $client->present()->url,
                 ];
@@ -192,7 +219,7 @@ class AccountRepository
 
             foreach ($client->contacts as $contact) {
                 $data['contacts'][] = [
-                    'value' => $contact->getDisplayName(),
+                    'value' => $contact->getSearchName(),
                     'tokens' => implode(',', [$contact->first_name, $contact->last_name, $contact->email, $contact->phone]),
                     'url' => $client->present()->url,
                 ];

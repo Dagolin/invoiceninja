@@ -240,7 +240,7 @@ class InvoiceRepository extends BaseRepository
 
         $table = \Datatable::query($query)
             ->addColumn('frequency', function ($model) {
-                return $model->frequency;
+                return trans('texts.freq_' . \Str::snake($model->frequency));
             })
             ->addColumn('start_date', function ($model) {
                 return Utils::fromSqlDate($model->start_date);
@@ -390,7 +390,7 @@ class InvoiceRepository extends BaseRepository
             $invoice->custom_taxes2 = $account->custom_invoice_taxes2 ?: false;
 
             // set the default due date
-            if ($entityType == ENTITY_INVOICE && empty($data['partial_due_date'])) {
+            if (empty($data['partial_due_date'])) {
                 $client = Client::scope()->whereId($data['client_id'])->first();
                 $invoice->due_date = $account->defaultDueDate($client);
             }
@@ -403,7 +403,7 @@ class InvoiceRepository extends BaseRepository
 
         if ($invoice->is_deleted) {
             return $invoice;
-        } elseif ($invoice->isSent() && config('ninja.lock_sent_invoices')) {
+        } elseif ($invoice->isLocked()) {
             return $invoice;
         }
 
@@ -549,7 +549,7 @@ class InvoiceRepository extends BaseRepository
                 if ($invoice->is_amount_discount) {
                     $lineTotal -= $discount;
                 } else {
-                    $lineTotal -= $lineTotal * $discount / 100;
+                    $lineTotal -= round($lineTotal * $discount / 100, 4);
                 }
             }
 
@@ -567,17 +567,17 @@ class InvoiceRepository extends BaseRepository
                 if ($invoice->is_amount_discount) {
                     $lineTotal -= $discount;
                 } else {
-                    $lineTotal -= round($lineTotal * $discount / 100, 2);
+                    $lineTotal -= round($lineTotal * $discount / 100, 4);
                 }
             }
 
             if ($invoice->discount > 0) {
                 if ($invoice->is_amount_discount) {
                     if ($total != 0) {
-                        $lineTotal -= round(($lineTotal / $total) * $invoice->discount, 2);
+                        $lineTotal -= round(($lineTotal / $total) * $invoice->discount, 4);
                     }
                 } else {
-                    $lineTotal -= round($lineTotal * ($invoice->discount / 100), 2);
+                    $lineTotal -= round($lineTotal * ($invoice->discount / 100), 4);
                 }
             }
 
@@ -742,7 +742,7 @@ class InvoiceRepository extends BaseRepository
                         if ($product && (Auth::user()->can('edit', $product))) {
                             $product->notes = ($task || $expense) ? '' : $item['notes'];
                             if (! $account->convert_products) {
-                                $product->cost = $expense ? 0 : $item['cost'];
+                                $product->cost = $expense ? 0 : Utils::parseFloat($item['cost']);
                             }
                             $product->tax_name1 = isset($item['tax_name1']) ? $item['tax_name1'] : null;
                             $product->tax_rate1 = isset($item['tax_rate1']) ? $item['tax_rate1'] : 0;
@@ -958,6 +958,7 @@ class InvoiceRepository extends BaseRepository
                 'tax_rate2',
                 'custom_value1',
                 'custom_value2',
+                'discount',
             ] as $field) {
                 $cloneItem->$field = $item->$field;
             }
@@ -987,7 +988,12 @@ class InvoiceRepository extends BaseRepository
      */
     public function emailInvoice(Invoice $invoice)
     {
-        dispatch(new SendInvoiceEmail($invoice));
+        // TODO remove this with Laravel 5.3 (https://github.com/invoiceninja/invoiceninja/issues/1303)
+        if (config('queue.default') === 'sync') {
+            app('App\Ninja\Mailers\ContactMailer')->sendInvoice($invoice);
+        } else {
+            dispatch(new SendInvoiceEmail($invoice));
+        }
     }
 
     /**
@@ -1135,6 +1141,7 @@ class InvoiceRepository extends BaseRepository
             $item->tax_rate2 = $recurItem->tax_rate2;
             $item->custom_value1 = Utils::processVariables($recurItem->custom_value1, $client);
             $item->custom_value2 = Utils::processVariables($recurItem->custom_value2, $client);
+            $item->discount = $recurItem->discount;
             $invoice->invoice_items()->save($item);
         }
 
@@ -1187,7 +1194,7 @@ class InvoiceRepository extends BaseRepository
         }
 
         if (! count($dates)) {
-            return [];
+            return collect();
         }
 
         $sql = implode(' OR ', $dates);
@@ -1212,7 +1219,7 @@ class InvoiceRepository extends BaseRepository
         $frequencyId = $settings->frequency_id_reminder4;
 
         if (! $frequencyId || ! $account->enable_reminder4) {
-            return [];
+            return collect();
         }
 
         $frequency = Utils::getFromCache($frequencyId, 'frequencies');

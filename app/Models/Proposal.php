@@ -71,6 +71,14 @@ class Proposal extends EntityModel
     /**
      * @return mixed
      */
+    public function invitations()
+    {
+        return $this->hasMany('App\Models\ProposalInvitation')->orderBy('proposal_invitations.contact_id');
+    }
+
+    /**
+     * @return mixed
+     */
     public function proposal_invitations()
     {
         return $this->hasMany('App\Models\ProposalInvitation')->orderBy('proposal_invitations.contact_id');
@@ -87,6 +95,25 @@ class Proposal extends EntityModel
     public function getDisplayName()
     {
         return $this->invoice->invoice_number;
+    }
+
+    public function getLink($forceOnsite = false, $forcePlain = false)
+    {
+        $invitation = $this->invitations->first();
+
+        return $invitation->getLink('proposal', $forceOnsite, $forcePlain);
+    }
+
+    public function getHeadlessLink()
+    {
+        return sprintf('%s?phantomjs=true&phantomjs_secret=%s', $this->getLink(true, true), env('PHANTOMJS_SECRET'));
+    }
+
+    public function getFilename($extension = 'pdf')
+    {
+        $entityType = $this->getEntityType();
+
+        return trans('texts.proposal') . '_' . $this->invoice->invoice_number . '.' . $extension;
     }
 }
 

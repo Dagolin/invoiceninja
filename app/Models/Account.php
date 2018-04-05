@@ -134,6 +134,9 @@ class Account extends Eloquent
         'header_font_id',
         'body_font_id',
         'auto_convert_quote',
+        'auto_archive_quote',
+        'auto_archive_invoice',
+        'auto_email_invoice',
         'all_pages_footer',
         'all_pages_header',
         'show_currency_code',
@@ -170,6 +173,7 @@ class Account extends Eloquent
         'reset_counter_frequency_id',
         'payment_type_id',
         'gateway_fee_enabled',
+        'send_item_details',
         'reset_counter_date',
         'custom_contact_label1',
         'custom_contact_label2',
@@ -232,12 +236,15 @@ class Account extends Eloquent
     public static $customLabels = [
         'balance_due',
         'credit_card',
+        'delivery_note',
         'description',
         'discount',
         'due_date',
         'hours',
         'id_number',
         'invoice',
+        'invoice_date',
+        'invoice_number',
         'item',
         'line_total',
         'outstanding',
@@ -246,12 +253,15 @@ class Account extends Eloquent
         'po_number',
         'quantity',
         'quote',
+        'quote_date',
+        'quote_number',
         'rate',
         'service',
         'subtotal',
         'tax',
         'terms',
         'unit_cost',
+        'valid_until',
         'vat_number',
     ];
 
@@ -620,12 +630,12 @@ class Account extends Eloquent
      *
      * @return DateTime|null|string
      */
-    public function getDateTime($date = 'now')
+    public function getDateTime($date = 'now', $formatted = false)
     {
         $date = $this->getDate($date);
         $date->setTimeZone(new \DateTimeZone($this->getTimezone()));
 
-        return $date;
+        return $formatted ? $date->format($this->getCustomDateTimeFormat()) : $date;
     }
 
     /**
@@ -676,6 +686,17 @@ class Account extends Eloquent
         }
 
         return Utils::formatMoney($amount, $currencyId, $countryId, $decorator);
+    }
+
+    public function formatNumber($amount, $precision = 0)
+    {
+        if ($this->currency_id) {
+            $currencyId = $this->currency_id;
+        } else {
+            $currencyId = DEFAULT_CURRENCY;
+        }
+
+        return Utils::formatNumber($amount, $currencyId, $precision);
     }
 
     /**
@@ -1775,6 +1796,11 @@ class Account extends Eloquent
         } else {
             return url('/');
         }
+    }
+
+    public function requiresAddressState() {
+        return true;
+        //return ! $this->country_id || $this->country_id == DEFAULT_COUNTRY;
     }
 }
 

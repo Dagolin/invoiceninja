@@ -250,7 +250,7 @@
         @if (Auth::check())
           @if (!Auth::user()->registered)
               @if (!Auth::user()->confirmed)
-                {!! Button::success(trans('texts.sign_up'))->withAttributes(array('id' => 'signUpButton', 'data-toggle'=>'modal', 'data-target'=>'#signUpModal', 'style' => 'max-width:100px;;overflow:hidden'))->small() !!} &nbsp;
+                {!! Button::success(trans('texts.sign_up'))->withAttributes(array('id' => 'signUpButton', 'onclick' => 'showSignUp()', 'style' => 'max-width:100px;;overflow:hidden'))->small() !!} &nbsp;
               @endif
           @elseif (Utils::isNinjaProd() && (!Auth::user()->isPro() || Auth::user()->isTrial()))
             @if (Auth::user()->account->company->hasActivePromo())
@@ -365,7 +365,7 @@
 
 </nav>
 
-<div id="wrapper" class='{!! session(SESSION_LEFT_SIDEBAR) ? 'toggled-left' : '' !!} {!! session(SESSION_RIGHT_SIDEBAR, true) ? 'toggled-right' : '' !!}'>
+<div id="wrapper" class='{{ session(SESSION_LEFT_SIDEBAR) ? 'toggled-left' : '' }} {{ session(SESSION_RIGHT_SIDEBAR, true) ? 'toggled-right' : '' }}'>
 
     <!-- Sidebar -->
     <div id="left-sidebar-wrapper" class="hide-phone">
@@ -385,11 +385,11 @@
                 'expenses',
                 'vendors',
             ] as $option)
-                @if (in_array($option, ['dashboard', 'settings'])
-                    || Auth::user()->can('view', substr($option, 0, -1))
-                    || Auth::user()->can('create', substr($option, 0, -1)))
-                    @include('partials.navigation_option')
-                @endif
+            @if (in_array($option, ['dashboard', 'settings'])
+                || Auth::user()->can('view', substr($option, 0, -1))
+                || Auth::user()->can('create', substr($option, 0, -1)))
+                @include('partials.navigation_option')
+            @endif
             @endforeach
             @if ( ! Utils::isNinjaProd())
                 @foreach (Module::all() as $module)
@@ -469,7 +469,7 @@
           </div>
 
           @if (!isset($showBreadcrumbs) || $showBreadcrumbs)
-            {!! Form::breadcrumbs((isset($entity) && $entity->exists) ? $entity->present()->statusLabel : false) !!}
+            {!! Form::breadcrumbs((! empty($entity) && $entity->exists) ? $entity->present()->statusLabel : false) !!}
           @endif
 
           @yield('content')
@@ -500,6 +500,10 @@
 @include('partials.contact_us')
 @include('partials.sign_up')
 @include('partials.keyboard_shortcuts')
+
+@if (auth()->check() && ! auth()->user()->hasAcceptedLatestTerms())
+    @include('partials.accept_terms')
+@endif
 
 </div>
 

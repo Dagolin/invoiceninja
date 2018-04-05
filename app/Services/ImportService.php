@@ -393,12 +393,14 @@ class ImportService
             }
         }
 
+        /*
         // if the invoice number is blank we'll assign it
         if ($entityType == ENTITY_INVOICE && ! $data['invoice_number']) {
             $account = Auth::user()->account;
             $invoice = Invoice::createNew();
             $data['invoice_number'] = $account->getNextNumber($invoice);
         }
+        */
 
         if (EntityModel::validate($data, $entityType) !== true) {
             return false;
@@ -651,7 +653,7 @@ class ImportService
         $this->checkForFile($fileName);
         $file = file_get_contents($fileName);
         $data = array_map("str_getcsv", preg_split('/\r*\n+|\r+/', $file));
-        dd($data);
+
         if (count($data) > 0) {
             $headers = $data[0];
 

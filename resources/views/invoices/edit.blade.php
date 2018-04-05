@@ -187,10 +187,10 @@
 		</div>
 		<div class="col-md-4" id="col_2">
 			<div data-bind="visible: !is_recurring()">
-				{!! Former::text('invoice_date')->data_bind("datePicker: invoice_date, valueUpdate: 'afterkeydown'")->label(trans("texts.{$entityType}_date"))
+				{!! Former::text('invoice_date')->data_bind("datePicker: invoice_date, valueUpdate: 'afterkeydown'")->label($account->getLabel("{$entityType}_date"))
 							->data_date_format(Session::get(SESSION_DATE_PICKER_FORMAT, DEFAULT_DATE_PICKER_FORMAT))->appendIcon('calendar')->addGroupClass('invoice_date') !!}
 				{!! Former::text('due_date')->data_bind("datePicker: due_date, valueUpdate: 'afterkeydown'")->label($account->getLabel($invoice->getDueDateLabel()))
-							->placeholder($invoice->id || $invoice->isQuote() ? ' ' : $account->present()->dueDatePlaceholder())
+							->placeholder($invoice->id ? ' ' : $account->present()->dueDatePlaceholder())
 							->data_date_format(Session::get(SESSION_DATE_PICKER_FORMAT, DEFAULT_DATE_PICKER_FORMAT))->appendIcon('calendar')->addGroupClass('due_date') !!}
 
 				<div class="form-group partial">
@@ -287,15 +287,17 @@
             @if ($entityType == ENTITY_INVOICE)
             <div class="form-group" style="margin-bottom: 8px">
                 <div class="col-lg-8 col-sm-8 col-sm-offset-4 smaller" style="padding-top: 10px;">
-                	@if ($invoice->recurring_invoice)
+                	@if ($invoice->recurring_invoice_id && $invoice->recurring_invoice)
                         {!! trans('texts.created_by_invoice', ['invoice' => link_to('/invoices/'.$invoice->recurring_invoice->public_id, trans('texts.recurring_invoice'))]) !!} <p/>
     				@elseif ($invoice->id)
                         @if (isset($lastSent) && $lastSent)
                             {!! trans('texts.last_sent_on', ['date' => link_to('/invoices/'.$lastSent->public_id, $invoice->last_sent_date, ['id' => 'lastSent'])]) !!} <p/>
                         @endif
-                        @if ($invoice->is_recurring && $invoice->getNextSendDate())
-                           {!! trans('texts.next_send_on', ['date' => '<span data-bind="tooltip: {title: \''.$invoice->getPrettySchedule().'\', html: true}">'.$account->formatDate($invoice->getNextSendDate()).
-                                '<span class="glyphicon glyphicon-info-sign" style="padding-left:10px;color:#B1B5BA"></span></span>']) !!}
+                        @if ($invoice->is_recurring && $invoice->start_date && $invoice->is_public)
+							@if ($sendNextDate = $invoice->getNextSendDate())
+                           		{!! trans('texts.next_send_on', ['date' => '<span data-bind="tooltip: {title: \''.$invoice->getPrettySchedule().'\', html: true}">' . $account->formatDate($sendNextDate).
+                                	'<span class="glyphicon glyphicon-info-sign" style="padding-left:10px;color:#B1B5BA"></span></span>']) !!}
+							@endif
                             @if ($invoice->getDueDate())
                                 <br>
                                 {!! trans('texts.next_due_on', ['date' => '<span>'.$account->formatDate($invoice->getDueDate($invoice->getNextSendDate())).'</span>']) !!}
@@ -470,7 +472,7 @@
 								<input type="hidden" name="document_ids[]" data-bind="value: public_id"/>
 							</div>
 						</div>
-						@if ($invoice->hasExpenseDocuments() || count($expenses))
+						@if ($invoice->hasExpenseDocuments() || $expenses->count())
 							<h4>{{trans('texts.documents_from_expenses')}}</h4>
 							@foreach($invoice->expenses as $expense)
 								@if ($expense->invoice_documents)
@@ -525,7 +527,7 @@
 		@endif
 
         @if ( $invoice->id && ! $invoice->is_recurring)
-		    {!! Button::primary(trans('texts.download_pdf'))
+		    {!! Button::primary(trans('texts.download'))
                     ->withAttributes(['onclick' => 'onDownloadClick()', 'id' => 'downloadPdfButton'])
                     ->appendIcon(Icon::create('download-alt')) !!}
         @endif
@@ -533,11 +535,11 @@
         @if (Auth::user()->canCreateOrEdit(ENTITY_INVOICE, $invoice))
             @if ($invoice->isClientTrashed())
                 <!-- do nothing -->
-			@elseif ($invoice->isSent() && config('ninja.lock_sent_invoices'))
+			@elseif ($invoice->isLocked())
 				@if (! $invoice->trashed())
 					{!! Button::info(trans("texts.email_{$entityType}"))->withAttributes(array('id' => 'emailButton', 'onclick' => 'onEmailClick()'))->appendIcon(Icon::create('send')) !!}
+					{!! DropdownButton::normal(trans('texts.more_actions'))->withContents($invoice->present()->moreActions())->dropup() !!}
 				@endif
-
             @else
 				@if (!$invoice->is_deleted)
 					@if ($invoice->isSent())
@@ -893,11 +895,11 @@
                 @if ($account->invoice_taxes)
 					@if (! empty($account->tax_name1))
 						model.invoice().tax_rate1("{{ $account->tax_rate1 }}");
-						model.invoice().tax_name1("{!! addslashes($account->tax_name1) !!}");
+						model.invoice().tax_name1({!! json_encode($account->tax_name1) !!});
 					@endif
 					@if (! empty($account->tax_name2))
 						model.invoice().tax_rate2("{{ $account->tax_rate2 }}");
-						model.invoice().tax_name2("{!! addslashes($account->tax_name2) !!}");
+						model.invoice().tax_name2({!! json_encode($account->tax_name2) !!});
 					@endif
                 @endif
 
@@ -910,7 +912,8 @@
 		        }
             @endif
 
-            @if (isset($tasks) && $tasks)
+            @if (isset($tasks) && count($tasks))
+                NINJA.formIsChanged = true;
                 var tasks = {!! json_encode($tasks) !!};
                 for (var i=0; i<tasks.length; i++) {
                     var task = tasks[i];
@@ -924,7 +927,8 @@
 				NINJA.formIsChanged = true;
             @endif
 
-            @if (isset($expenses) && $expenses)
+            @if (isset($expenses) && $expenses->count())
+                NINJA.formIsChanged = true;
                 model.expense_currency_id({{ isset($expenseCurrencyId) ? $expenseCurrencyId : 0 }});
 
                 // move the blank invoice line item to the end
@@ -1085,14 +1089,6 @@
 			client.public_id(),
 			client.name.display());
 
-        @if (isset($tasks) && $tasks)
-            NINJA.formIsChanged = true;
-        @endif
-
-        @if (isset($expenses) && $expenses)
-            NINJA.formIsChanged = true;
-        @endif
-
         applyComboboxListeners();
 
         @if (Auth::user()->account->hasFeature(FEATURE_DOCUMENTS))
@@ -1162,7 +1158,9 @@
 
 	function createInvoiceModel() {
         var model = ko.toJS(window.model);
-        if(!model)return;
+        if (! model) {
+			return;
+		}
 		var invoice = model.invoice;
 		invoice.features = {
             customize_invoice_design:{{ Auth::user()->hasFeature(FEATURE_CUSTOMIZE_INVOICE_DESIGN) ? 'true' : 'false' }},
@@ -1173,10 +1171,13 @@
 		invoice.contact = _.findWhere(invoice.client.contacts, {send_invoice: true});
 
         if (invoice.is_recurring) {
-            invoice.invoice_number = "{!! trans('texts.assigned_when_sent') !!}";
+            invoice.invoice_number = {!! json_encode(trans('texts.assigned_when_sent')) !!};
+			invoice.due_date = {!! json_encode(trans('texts.assigned_when_sent')) !!};
             if (invoice.start_date) {
                 invoice.invoice_date = invoice.start_date;
-            }
+            } else {
+				invoice.invoice_date = invoice.due_date;
+			}
         }
 
         @if (!$invoice->id || $invoice->is_recurring)
@@ -1194,11 +1195,14 @@
 			invoice.imageHeight = {{ $account->getLogoHeight() }};
 		@endif
 
+		if (! invoice.public_id || NINJA.formIsChanged) {
+			invoice.watermark = "{{ strtoupper(trans('texts.preview')) }}";
+		}
+
         return invoice;
 	}
 
 	var origInvoiceNumber = false;
-	var checkedInvoiceBalances = false;
 
 	function getPDFString(cb, force) {
 		@if (! $invoice->id && $account->credit_number_counter > 0)
@@ -1213,27 +1217,12 @@
 			}
 		@endif
 
-		var invoice = createInvoiceModel();
-		var design = getDesignJavascript();
-
-		@if ($invoice->exists)
-			if (! checkedInvoiceBalances) {
-				checkedInvoiceBalances = true;
-				var phpBalance = roundSignificant(invoice.balance);
-				var koBalance = roundSignificant(model.invoice().totals.rawTotal());
-				var jsBalance = roundSignificant(calculateAmounts(invoice).total_amount);
-				if (phpBalance == koBalance && koBalance == jsBalance) {
-					// do nothing
-				} else {
-					var invitationKey = invoice.invitations[0].invitation_key;
-					window.onerror(invitationKey + ': Balances do not match | PHP: ' + phpBalance + ', JS: ' + jsBalance + ', KO: ' + koBalance);
-				}
-			}
-		@endif
-
 		@if ( ! $account->live_preview)
 			return;
 		@endif
+
+		var invoice = createInvoiceModel();
+		var design = getDesignJavascript();
 
 		if (! design) {
 			return;
@@ -1278,7 +1267,7 @@
         var design  = getDesignJavascript();
 		if (!design) return;
 		var doc = generatePDF(invoice, design, true);
-        var type = invoice.is_quote ? '{!! trans('texts.'.ENTITY_QUOTE) !!}' : '{!! trans('texts.'.ENTITY_INVOICE) !!}';
+        var type = invoice.is_quote ? {!! json_encode(trans('texts.'.ENTITY_QUOTE)) !!} : {!! json_encode(trans('texts.'.ENTITY_INVOICE)) !!};
 		doc.save(type + '-' + $('#invoice_number').val() + '.pdf');
 	}
 
@@ -1305,23 +1294,23 @@
 
 	function onEmailClick() {
         if (!NINJA.isRegistered) {
-            swal("{!! trans('texts.registration_required') !!}");
+            swal({!! json_encode(trans('texts.registration_required')) !!});
             return;
         }
 
         var clientId = parseInt($('input[name=client]').val(), 10) || 0;
         if (clientId == 0 ) {
-            swal("{!! trans('texts.no_client_selected') !!}");
+            swal({!! json_encode(trans('texts.no_client_selected')) !!});
             return;
         }
 
         if (!isContactSelected()) {
-            swal("{!! trans('texts.no_contact_selected') !!}");
+            swal({!! json_encode(trans('texts.no_contact_selected')) !!});
             return;
         }
 
         if (!isEmailValid()) {
-            swal("{!! trans('texts.provide_email') !!}");
+            swal({!! json_encode(trans('texts.provide_email')) !!});
             return;
         }
 
@@ -1356,16 +1345,25 @@
 				return false;
 			}
 
-			var title = "{!! trans("texts.confirm_recurring_email_invoice") !!}";
+			@if ($account->auto_email_invoice)
+				var title = {!! json_encode(trans("texts.confirm_recurring_email_invoice")) !!};
+			@else
+				var title = {!! json_encode(trans("texts.confirm_recurring_email_invoice_not_sent")) !!};
+			@endif
+
 			var text = '\n' + getSendToEmails();
 			var startDate = moment($('#start_date').datepicker('getDate'));
 
 			// warn invoice will be emailed when saving new recurring invoice
 			if (model.invoice().start_date() == "{{ Utils::fromSqlDate(date('Y-m-d')) }}") {
-				text += '\n\n' + "{!! trans("texts.confirm_recurring_timing") !!}";
+				@if ($account->auto_email_invoice)
+					text += '\n\n' + {!! json_encode(trans("texts.confirm_recurring_timing")) !!};
+				@else
+					text += '\n\n' + {!! json_encode(trans("texts.confirm_recurring_timing_not_sent")) !!};
+				@endif
 			// check if the start date is in the future
 			} else if (startDate.isAfter(moment(), 'day')) {
-				var message = "{!! trans("texts.email_will_be_sent_on") !!}";
+				var message = {!! json_encode(trans("texts.email_will_be_sent_on")) !!};
 				text += '\n\n' + message.replace(':date', model.invoice().start_date());
 			}
 
@@ -1384,9 +1382,13 @@
 		@if ($invoice->id)
 			if (model.invoice().is_recurring()) {
 	            if (model.invoice().start_date() != model.invoice().start_date_orig()) {
-	                var text = "{!! trans("texts.original_start_date") !!}: " + model.invoice().start_date_orig() + '\n'
-	                            + "{!! trans("texts.new_start_date") !!}: " + model.invoice().start_date();
-	                var title = "{!! trans("texts.warn_start_date_changed") !!}";
+	                var text = {!! json_encode(trans("texts.original_start_date")) !!} + ': ' + model.invoice().start_date_orig() + '\n'
+	                            + {!! json_encode(trans("texts.new_start_date")) !!} + ': ' + model.invoice().start_date();
+					@if ($account->auto_email_invoice)
+						var title = {!! json_encode(trans("texts.warn_start_date_changed")) !!};
+					@else
+						var title = {!! json_encode(trans("texts.warn_start_date_changed_not_sent")) !!};
+					@endif
 	                sweetConfirm(function() {
 	                    submitAction('');
 	                }, text, title);
@@ -1396,7 +1398,7 @@
 		@endif
 
         @if (!empty($autoBillChangeWarning))
-            var text = "{!! trans('texts.warn_change_auto_bill') !!}";
+            var text = {!! json_encode(trans('texts.warn_change_auto_bill')) !!};
             sweetConfirm(function() {
                 submitAction('');
             }, text);
@@ -1444,7 +1446,7 @@
 
     function onFormSubmit(event) {
         if (window.countUploadingDocuments > 0) {
-            swal("{!! trans('texts.wait_for_upload') !!}");
+            swal({!! json_encode(trans('texts.wait_for_upload')) !!});
             return false;
         }
 
@@ -1470,14 +1472,14 @@
         var expenseCurrencyId = model.expense_currency_id();
         var clientCurrencyId = model.invoice().client().currency_id() || {{ $account->getCurrencyId() }};
         if (expenseCurrencyId && expenseCurrencyId != clientCurrencyId) {
-            swal("{!! trans('texts.expense_error_mismatch_currencies') !!}");
+            swal({!! json_encode(trans('texts.expense_error_mismatch_currencies')) !!});
             return false;
         }
 
         @if (Auth::user()->canCreateOrEdit(ENTITY_INVOICE, $invoice))
-            if ($('#saveButton').is(':disabled')) {
-                return false;
-            }
+			if ($('#saveButton').is(':disabled')) {
+				return false;
+			}
             $('#saveButton, #emailButton, #draftButton').attr('disabled', true);
             // if save fails ensure user can try again
             $.post('{{ url($url) }}', $('.main-form').serialize(), function(data) {
@@ -1503,7 +1505,7 @@
 		if (data) {
 			var error = firstJSONError(data.responseJSON) || data.statusText;
 		}
-		swal("{!! trans('texts.invoice_save_error') !!}", error);
+		swal({!! json_encode(trans('texts.invoice_save_error')) !!}, error);
 	}
 
     function submitBulkAction(value) {
@@ -1572,7 +1574,7 @@
             @if (!empty($autoBillChangeWarning))
                 sweetConfirm(function() {
                     window.location = '{{ URL::to('payments/create/' . $invoice->client->public_id . '/' . $invoice->public_id ) }}';
-                }, "{!! trans('texts.warn_change_auto_bill') !!}");
+                }, {!! json_encode(trans('texts.warn_change_auto_bill')) !!});
             @else
                 window.location = '{{ URL::to('payments/create/' . $invoice->client->public_id . '/' . $invoice->public_id ) }}';
             @endif

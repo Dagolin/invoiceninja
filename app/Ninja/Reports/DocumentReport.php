@@ -24,6 +24,7 @@ class DocumentReport extends AbstractReport
         $account = auth()->user()->account;
         $filter = $this->options['document_filter'];
         $exportFormat = $this->options['export_format'];
+        $subgroup = $this->options['subgroup'];
         $records = false;
 
         if (! $filter || $filter == ENTITY_INVOICE) {
@@ -51,6 +52,10 @@ class DocumentReport extends AbstractReport
         }
 
         if ($this->isExport && $exportFormat == 'zip') {
+            if (! extension_loaded('GMP')) {
+                die(trans('texts.gmp_required'));
+            }
+
             $zip = Archive::instance_by_useragent(date('Y-m-d') . '_' . str_replace(' ', '_', trans('texts.documents')));
             foreach ($records as $record) {
                 foreach ($record->documents as $document) {
@@ -66,12 +71,16 @@ class DocumentReport extends AbstractReport
 
         foreach ($records as $record) {
             foreach ($record->documents as $document) {
+                $date = $record->getEntityType() == ENTITY_INVOICE ? $record->invoice_date : $record->expense_date;
                 $this->data[] = [
                     $this->isExport ? $document->name : link_to($document->getUrl(), $document->name),
                     $record->client ? ($this->isExport ? $record->client->getDisplayName() : $record->client->present()->link) : '',
                     $this->isExport ? $record->present()->titledName : ($filter ? $record->present()->link : link_to($record->present()->url, $record->present()->titledName)),
-                    $record->getEntityType() == ENTITY_INVOICE ? $record->invoice_date : $record->expense_date,
+                    $date,
                 ];
+
+                $dimension = $this->getDimension($record);
+                $this->addChartData($dimension, $date, 1);
             }
         }
     }

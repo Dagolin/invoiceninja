@@ -2,7 +2,6 @@
 
 namespace App\Exceptions;
 
-use Crawler;
 use Exception;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -51,11 +50,12 @@ class Handler extends ExceptionHandler
             return false;
         }
 
-        if (! class_exists('Utils')) {
+        // if these classes don't exist the install is broken, maybe due to permissions
+        if (! class_exists('Utils') || ! class_exists('Crawler')) {
             return parent::report($e);
         }
 
-        if (Crawler::isCrawler()) {
+        if (\Crawler::isCrawler()) {
             return false;
         }
 
@@ -68,7 +68,11 @@ class Handler extends ExceptionHandler
             }
             // Log 404s to a separate file
             $errorStr = date('Y-m-d h:i:s') . ' ' . $e->getMessage() . ' URL:' . request()->url() . "\n" . json_encode(Utils::prepareErrorData('PHP')) . "\n\n";
-            @file_put_contents(storage_path('logs/not-found.log'), $errorStr, FILE_APPEND);
+            if (config('app.log') == 'single') {
+                @file_put_contents(storage_path('logs/not-found.log'), $errorStr, FILE_APPEND);
+            } else {
+                Utils::logError('[not found] ' . $errorStr);
+            }
             return false;
         } elseif ($e instanceof HttpResponseException) {
             return false;
@@ -77,7 +81,11 @@ class Handler extends ExceptionHandler
         if (! Utils::isTravis()) {
             Utils::logError(Utils::getErrorString($e));
             $stacktrace = date('Y-m-d h:i:s') . ' ' . $e->getMessage() . ': ' . $e->getTraceAsString() . "\n\n";
-            @file_put_contents(storage_path('logs/stacktrace.log'), $stacktrace, FILE_APPEND);
+            if (config('app.log') == 'single') {
+                @file_put_contents(storage_path('logs/stacktrace.log'), $stacktrace, FILE_APPEND);
+            } else {
+                Utils::logError('[stacktrace] ' . $stacktrace);
+            }
             return false;
         } else {
             return parent::report($e);

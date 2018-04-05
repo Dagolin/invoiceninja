@@ -55,6 +55,7 @@ class PurgeAccountData extends Job
             'proposal_snippets',
             'proposal_categories',
             'proposal_invitations',
+            'tax_rates',
         ];
 
         foreach ($tables as $table) {
@@ -76,6 +77,7 @@ class PurgeAccountData extends Job
             $lookupAccount = LookupAccount::whereAccountKey($account->account_key)->firstOrFail();
             DB::table('lookup_contacts')->where('lookup_account_id', '=', $lookupAccount->id)->delete();
             DB::table('lookup_invitations')->where('lookup_account_id', '=', $lookupAccount->id)->delete();
+            DB::table('lookup_proposal_invitations')->where('lookup_account_id', '=', $lookupAccount->id)->delete();
 
             config(['database.default' => $current]);
         }

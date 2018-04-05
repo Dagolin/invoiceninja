@@ -21,6 +21,24 @@ class AddSubscriptionFormat extends Migration
             $table->boolean('ubl_email_attachment')->default(false);
         });
 
+        Schema::table('account_email_settings', function ($table) {
+            $table->string('email_subject_proposal')->nullable();
+            $table->text('email_template_proposal')->nullable();
+        });
+
+        Schema::table('documents', function ($table) {
+            $table->boolean('is_proposal')->default(false);
+            $table->string('document_key')->nullable()->unique();
+        });
+
+        Schema::table('invoices', function ($table) {
+            $table->decimal('discount', 13, 2)->change();
+        });
+
+        Schema::table('invoice_items', function ($table) {
+            $table->decimal('discount', 13, 2)->change();
+        });
+
         Schema::create('proposal_categories', function ($table) {
             $table->increments('id');
             $table->unsignedInteger('account_id');
@@ -128,6 +146,16 @@ class AddSubscriptionFormat extends Migration
             $table->unique(['account_id', 'public_id']);
         });
 
+        Schema::create('lookup_proposal_invitations', function ($table) {
+            $table->increments('id');
+            $table->unsignedInteger('lookup_account_id')->index();
+            $table->string('invitation_key')->unique();
+            $table->string('message_id')->nullable()->unique();
+
+            $table->foreign('lookup_account_id')->references('id')->on('lookup_accounts')->onDelete('cascade');
+        });
+
+        DB::table('languages')->where('locale', '=', 'en_UK')->update(['locale' => 'en_GB']);
     }
 
     /**
@@ -145,10 +173,21 @@ class AddSubscriptionFormat extends Migration
             $table->dropColumn('ubl_email_attachment');
         });
 
+        Schema::table('account_email_settings', function ($table) {
+            $table->dropColumn('email_subject_proposal');
+            $table->dropColumn('email_template_proposal');
+        });
+
+        Schema::table('documents', function ($table) {
+            $table->dropColumn('is_proposal');
+            $table->dropColumn('document_key');
+        });
+
+        Schema::dropIfExists('lookup_proposal_invitations');
+        Schema::dropIfExists('proposal_invitations');
         Schema::dropIfExists('proposals');
         Schema::dropIfExists('proposal_templates');
         Schema::dropIfExists('proposal_snippets');
         Schema::dropIfExists('proposal_categories');
-        Schema::dropIfExists('proposal_invitations');
     }
 }

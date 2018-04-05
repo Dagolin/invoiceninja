@@ -18,6 +18,7 @@
         ->addClass('col-lg-10 col-lg-offset-1 warn-on-exit main-form')
         ->onsubmit('return onFormSubmit(event)')
         ->method($method)
+        ->autocomplete('off')
         ->rules(array(
     		'client' => 'required',
     		'invoice' => 'required',
@@ -162,6 +163,9 @@
     }
 
 	$(function() {
+        @if (! empty($totalCredit))
+            $('#payment_type_id option:contains("{{ trans('texts.apply_credit') }}")').text("{{ trans('texts.apply_credit') }} | {{ $totalCredit}}");
+        @endif
 
         @if (Input::old('data'))
             // this means we failed so we'll reload the previous state
@@ -215,7 +219,12 @@
 	});
 
     function onFormSubmit(event) {
+        if ($('#saveButton').is(':disabled')) {
+            return false;
+        }
+
         @if ($payment)
+            $('#saveButton').attr('disabled', true);
             return true;
         @else
             // warn if amount is more than balance/credit will be created
@@ -302,7 +311,8 @@
         };
 
         self.exchangeCurrencyCode = ko.computed(function() {
-            return self.getCurrency(self.exchange_currency_id()).code;
+            var currency = self.getCurrency(self.exchange_currency_id());
+            return currency ? currency.code : '';
         });
 
         self.paymentCurrencyCode = ko.computed(function() {
@@ -312,7 +322,8 @@
             } else {
                 var currencyId = self.account_currency_id();
             }
-            return self.getCurrency(currencyId).code;
+            var currency = self.getCurrency(currencyId);
+            return currency ? currency.code : '';
         });
 
         self.enableExchangeRate = ko.computed(function() {
@@ -408,12 +419,14 @@
 
       if (invoiceId) {
         var invoice = invoiceMap[invoiceId];
-        var client = clientMap[invoice.client.public_id];
-        invoice.client = client;
-        setComboboxValue($('.invoice-select'), invoice.public_id, (invoice.invoice_number + ' - ' +
-                invoice.invoice_status.name + ' - ' + getClientDisplayName(client) + ' - ' +
-                formatMoneyInvoice(invoice.amount, invoice) + ' | ' + formatMoneyInvoice(invoice.balance, invoice)));
-        $invoiceSelect.trigger('change');
+        if (invoice) {
+            var client = clientMap[invoice.client.public_id];
+            invoice.client = client;
+            setComboboxValue($('.invoice-select'), invoice.public_id, (invoice.invoice_number + ' - ' +
+                    invoice.invoice_status.name + ' - ' + getClientDisplayName(client) + ' - ' +
+                    formatMoneyInvoice(invoice.amount, invoice) + ' | ' + formatMoneyInvoice(invoice.balance, invoice)));
+            $invoiceSelect.trigger('change');
+        }
       } else if (clientId) {
         var client = clientMap[clientId];
         setComboboxValue($('.client-select'), client.public_id, getClientDisplayName(client));

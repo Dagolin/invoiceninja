@@ -20,6 +20,7 @@ class InvoiceReport extends AbstractReport
             'payment_date' => [],
             'paid' => [],
             'method' => [],
+            'po_number' => ['columnSelector-false'],
             'private_notes' => ['columnSelector-false'],
             'user' => ['columnSelector-false'],
         ];
@@ -31,10 +32,10 @@ class InvoiceReport extends AbstractReport
         $account = auth()->user()->account;
 
         if ($account->custom_invoice_text_label1) {
-            $columns[$account->custom_invoice_text_label1] = ['columnSelector-false', 'custom'];
+            $columns[$account->present()->customInvoiceTextLabel1] = ['columnSelector-false', 'custom'];
         }
         if ($account->custom_invoice_text_label1) {
-            $columns[$account->custom_invoice_text_label1] = ['columnSelector-false', 'custom'];
+            $columns[$account->present()->customInvoiceTextLabel2] = ['columnSelector-false', 'custom'];
         }
 
         return $columns;
@@ -45,6 +46,7 @@ class InvoiceReport extends AbstractReport
         $account = Auth::user()->account;
         $statusIds = $this->options['status_ids'];
         $exportFormat = $this->options['export_format'];
+        $subgroup = $this->options['subgroup'];
         $hasTaxRates = TaxRate::scope()->count();
 
         $clients = Client::scope()
@@ -66,6 +68,10 @@ class InvoiceReport extends AbstractReport
 
 
         if ($this->isExport && $exportFormat == 'zip') {
+            if (! extension_loaded('GMP')) {
+                die(trans('texts.gmp_required'));
+            }
+
             $zip = Archive::instance_by_useragent(date('Y-m-d') . '_' . str_replace(' ', '_', trans('texts.invoice_documents')));
             foreach ($clients->get() as $client) {
                 foreach ($client->invoices as $invoice) {
@@ -93,6 +99,7 @@ class InvoiceReport extends AbstractReport
                         $payment ? $payment->present()->payment_date : '',
                         $payment ? $account->formatMoney($payment->getCompletedAmount(), $client) : '',
                         $payment ? $payment->present()->method : '',
+                        $invoice->po_number,
                         $invoice->private_notes,
                         $invoice->user->getDisplayName(),
                     ];
@@ -116,6 +123,14 @@ class InvoiceReport extends AbstractReport
 
                 $this->addToTotals($client->currency_id, 'amount', $invoice->amount);
                 $this->addToTotals($client->currency_id, 'balance', $invoice->balance);
+
+                if ($subgroup == 'status') {
+                    $dimension = $invoice->statusLabel();
+                } else {
+                    $dimension = $this->getDimension($client);
+                }
+
+                $this->addChartData($dimension, $invoice->invoice_date, $invoice->amount);
             }
         }
     }

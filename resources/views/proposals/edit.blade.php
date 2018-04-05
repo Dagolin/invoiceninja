@@ -13,6 +13,9 @@
     {!! Former::open($url)
             ->method($method)
             ->onsubmit('return onFormSubmit(event)')
+            ->id('mainForm')
+            ->autocomplete('off')
+            ->addClass('warn-on-exit')
             ->rules([
                 'invoice_id' => 'required',
             ]) !!}
@@ -23,6 +26,7 @@
 
     <span style="display:none">
         {!! Former::text('public_id') !!}
+        {!! Former::text('action') !!}
         {!! Former::text('html') !!}
         {!! Former::text('css') !!}
     </span>
@@ -56,9 +60,26 @@
                 ->appendIcon(Icon::create('remove-circle'))
                 ->asLinkTo(HTMLUtils::previousUrl('/proposals')) !!}
 
+        @if ($proposal)
+            {!! Button::primary(trans('texts.download'))
+                    ->withAttributes(['onclick' => 'onDownloadClick()'])
+                    ->appendIcon(Icon::create('download-alt')) !!}
+        @endif
+
         {!! Button::success(trans("texts.save"))
+                ->withAttributes(['id' => 'saveButton'])
                 ->submit()
                 ->appendIcon(Icon::create('floppy-disk')) !!}
+
+        {!! Button::info(trans('texts.email'))
+                ->withAttributes(['id' => 'emailButton', 'onclick' => 'onEmailClick()'])
+                ->appendIcon(Icon::create('send')) !!}
+
+        @if ($proposal)
+            {!! DropdownButton::normal(trans('texts.more_actions'))
+                    ->withContents($proposal->present()->moreActions()) !!}
+        @endif
+
     </center>
 
     {!! Former::close() !!}
@@ -71,13 +92,34 @@
 
     var templates = {!! $templates !!};
     var templateMap = {};
+    var isFormSubmitting = false;
 
     function onFormSubmit() {
+        // prevent duplicate form submissions
+        if (isFormSubmitting) {
+            return;
+        }
+        isFormSubmitting = true;
+        $('#saveButton, #emailButton').prop('disabled', true);
+
         $('#html').val(grapesjsEditor.getHtml());
         $('#css').val(grapesjsEditor.getCss());
 
         return true;
     }
+
+    function onEmailClick() {
+        sweetConfirm(function() {
+            $('#action').val('email');
+            $('#saveButton').click();
+        })
+    }
+
+    @if ($proposal)
+        function onDownloadClick() {
+            location.href = "{{ url("/proposals/{$proposal->public_id}/download") }}";
+        }
+    @endif
 
     function loadTemplate() {
         var templateId = $('select#proposal_template_id').val();
@@ -89,7 +131,7 @@
 
         var html = mergeTemplate(template.html);
 
-        // grapesjsEditor.CssComposer.getAll().reset();
+        grapesjsEditor.CssComposer.getAll().reset();
         grapesjsEditor.setComponents(html);
         grapesjsEditor.setStyle(template.css);
     }
@@ -104,7 +146,7 @@
 
         invoice.account = {!! auth()->user()->account->load('country') !!};
 
-        var regExp = new RegExp(/\$[a-z][\w\.]*/, 'g');
+        var regExp = new RegExp(/\$[a-z][\w\.]*/g);
         var matches = html.match(regExp);
 
         if (matches) {
@@ -129,7 +171,16 @@
                     field = 'client.phone';
                 }
 
-                var value = getDescendantProp(invoice, field) || ' ';
+                if (field == 'logo_url') {
+                    var value = "{{ $account->getLogoURL() }}";
+                } else if (field == 'quote_image_url') {
+                    var value = "{{ asset('/images/quote.png') }}";
+                } else if (match == '$client.name') {
+                    var value = getClientDisplayName(invoice.client);
+                } else {
+                    var value = getDescendantProp(invoice, field) || ' ';
+                }
+
                 value = doubleDollarSign(value) + '';
                 value = value.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
 
@@ -145,6 +196,16 @@
 
         return html;
     }
+
+    @if ($proposal)
+        function onArchiveClick() {
+            submitForm_proposal('archive', {{ $proposal->id }});
+    	}
+
+        function onDeleteClick() {
+            submitForm_proposal('delete', {{ $proposal->id }});
+        }
+    @endif
 
     $(function() {
         var invoiceId = {{ ! empty($invoicePublicId) ? $invoicePublicId : 0 }};
@@ -182,14 +243,17 @@
 
     </script>
 
+    @include('partials.bulk_form', ['entityType' => ENTITY_PROPOSAL])
     @include('proposals.grapesjs', ['entity' => $proposal])
 
     <script type="text/javascript">
 
     $(function() {
-        grapesjsEditor.on('canvas:drop', function() {
-            var html = mergeTemplate(grapesjsEditor.getHtml());
-            grapesjsEditor.setComponents(html);
+        grapesjsEditor.on('canvas:drop', function(event, block) {
+            if (! block.attributes || block.attributes.type != 'image') {
+                var html = mergeTemplate(grapesjsEditor.getHtml());
+                grapesjsEditor.setComponents(html);
+            }
         });
 
         @if (! $proposal && $templatePublicId)

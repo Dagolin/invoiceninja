@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\CreateProposalRequest;
 use App\Http\Requests\ProposalRequest;
 use App\Http\Requests\UpdateProposalRequest;
+use App\Jobs\SendInvoiceEmail;
+use App\Jobs\ConvertProposalToPdf;
 use App\Models\Invoice;
 use App\Models\Proposal;
 use App\Models\ProposalTemplate;
+use App\Ninja\Mailers\ContactMailer;
 use App\Ninja\Datatables\ProposalDatatable;
 use App\Ninja\Repositories\ProposalRepository;
 use App\Services\ProposalService;
@@ -20,12 +23,15 @@ class ProposalController extends BaseController
 {
     protected $proposalRepo;
     protected $proposalService;
+    protected $contactMailer;
+
     protected $entityType = ENTITY_PROPOSAL;
 
-    public function __construct(ProposalRepository $proposalRepo, ProposalService $proposalService)
+    public function __construct(ProposalRepository $proposalRepo, ProposalService $proposalService, ContactMailer $contactMailer)
     {
         $this->proposalRepo = $proposalRepo;
         $this->proposalService = $proposalService;
+        $this->contactMailer = $contactMailer;
     }
 
     /**
@@ -52,19 +58,15 @@ class ProposalController extends BaseController
 
     public function create(ProposalRequest $request)
     {
-        $account = auth()->user()->account;
-
-        $data = [
-            'account' => $account,
+        $data = array_merge($this->getViewmodel(), [
             'proposal' => null,
             'method' => 'POST',
             'url' => 'proposals',
             'title' => trans('texts.new_proposal'),
             'invoices' => Invoice::scope()->with('client.contacts', 'client.country')->unapprovedQuotes()->orderBy('id')->get(),
-            'templates' => ProposalTemplate::whereAccountId($account->id)->orWhereNull('account_id')->orderBy('name')->get(),
             'invoicePublicId' => $request->invoice_id,
             'templatePublicId' => $request->proposal_template_id,
-        ];
+        ]);
 
         return View::make('proposals.edit', $data);
     }
@@ -78,29 +80,50 @@ class ProposalController extends BaseController
 
     public function edit(ProposalRequest $request)
     {
-        $account = auth()->user()->account;
         $proposal = $request->entity();
 
-        $data = [
-            'account' => $account,
+        $data = array_merge($this->getViewmodel($proposal), [
             'proposal' => $proposal,
+            'entity' => $proposal,
             'method' => 'PUT',
             'url' => 'proposals/' . $proposal->public_id,
             'title' => trans('texts.edit_proposal'),
-            'invoices' => Invoice::scope()->with('client.contacts', 'client.country')->unapprovedQuotes($proposal->invoice_id)->orderBy('id')->get(),
-            'templates' => ProposalTemplate::whereAccountId($account->id)->orWhereNull('account_id')->orderBy('name')->get(),
+            'invoices' => Invoice::scope()->with('client.contacts', 'client.country')->withActiveOrSelected($proposal->invoice_id)->unapprovedQuotes($proposal->invoice_id)->orderBy('id')->get(),
             'invoicePublicId' => $proposal->invoice ? $proposal->invoice->public_id : null,
             'templatePublicId' => $proposal->proposal_template ? $proposal->proposal_template->public_id : null,
-        ];
+        ]);
 
         return View::make('proposals.edit', $data);
+    }
+
+    private function getViewmodel($proposal = false)
+    {
+        $account = auth()->user()->account;
+        $templates = ProposalTemplate::whereAccountId($account->id)->withActiveOrSelected($proposal ? $proposal->proposal_template_id : false)->orderBy('name')->get();
+
+        if (! $templates->count()) {
+            $templates = ProposalTemplate::whereNull('account_id')->orderBy('name')->get();
+        }
+
+        $data = [
+            'templates' => $templates,
+            'account' => $account,
+        ];
+
+        return $data;
     }
 
     public function store(CreateProposalRequest $request)
     {
         $proposal = $this->proposalService->save($request->input());
+        $action = Input::get('action');
 
-        Session::flash('message', trans('texts.created_proposal'));
+        if ($action == 'email') {
+            $this->dispatch(new SendInvoiceEmail($proposal->invoice, auth()->user()->id, false, false, $proposal));
+            Session::flash('message', trans('texts.emailed_proposal'));
+        } else {
+            Session::flash('message', trans('texts.created_proposal'));
+        }
 
         return redirect()->to($proposal->getRoute());
     }
@@ -108,12 +131,17 @@ class ProposalController extends BaseController
     public function update(UpdateProposalRequest $request)
     {
         $proposal = $this->proposalService->save($request->input(), $request->entity());
-
-        Session::flash('message', trans('texts.updated_proposal'));
-
         $action = Input::get('action');
+
         if (in_array($action, ['archive', 'delete', 'restore'])) {
             return self::bulk();
+        }
+
+        if ($action == 'email') {
+            $this->dispatch(new SendInvoiceEmail($proposal->invoice, auth()->user()->id, false, false, $proposal));
+            Session::flash('message', trans('texts.emailed_proposal'));
+        } else {
+            Session::flash('message', trans('texts.updated_proposal'));
         }
 
         return redirect()->to($proposal->getRoute());
@@ -121,8 +149,8 @@ class ProposalController extends BaseController
 
     public function bulk()
     {
-        $action = Input::get('action');
-        $ids = Input::get('public_id') ? Input::get('public_id') : Input::get('ids');
+        $action = Input::get('bulk_action') ?: Input::get('action');
+        $ids = Input::get('bulk_public_id') ?: (Input::get('public_id') ?: Input::get('ids'));
 
         $count = $this->proposalService->bulk($ids, $action);
 
@@ -133,5 +161,14 @@ class ProposalController extends BaseController
         }
 
         return redirect()->to('/proposals');
+    }
+
+    public function download(ProposalRequest $request)
+    {
+        $proposal = $request->entity();
+
+        $pdf = dispatch(new ConvertProposalToPdf($proposal));
+
+        $this->downloadResponse($proposal->getFilename(), $pdf);
     }
 }
